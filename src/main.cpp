@@ -63,13 +63,40 @@ std::string find_in_path(const std::string& cmd) {
 
 // Helper function to split input into tokens
 std::vector<std::string> split_input(const std::string& input) {
-  std::vector<std::string> tokens;
-  std::stringstream ss(input);
-  std::string token;
-  while (ss >> token) {
-    tokens.push_back(token);
-  }
-  return tokens;
+    std::vector<std::string> tokens;
+    size_t i = 0;
+    while (i < input.size()) {
+        // Skip any leading whitespace
+        while (i < input.size() && std::isspace(input[i])) {
+            ++i;
+        }
+        if (i >= input.size())
+            break;
+
+        std::string token;
+        // Process a token until we hit whitespace
+        while (i < input.size() && !std::isspace(input[i])) {
+            if (input[i] == '\'') {
+                // Skip the opening single quote
+                ++i;
+                // Append everything within the quotes literally
+                while (i < input.size() && input[i] != '\'') {
+                    token.push_back(input[i]);
+                    ++i;
+                }
+                // Skip the closing single quote if present
+                if (i < input.size() && input[i] == '\'') {
+                    ++i;
+                }
+            } else {
+                // Normal character add to token
+                token.push_back(input[i]);
+                ++i;
+            }
+        }
+        tokens.push_back(token);
+    }
+    return tokens;
 }
 
 // Helper function to execute external program
