@@ -130,6 +130,7 @@ struct Command {
     bool has_stdout_redirection = false;
     bool has_stderr_redirection = false;
     bool append_stdout = false;
+    bool append_stderr = false;
 };
 
 // Helper function to parse command and redirection
@@ -150,6 +151,12 @@ Command parse_command(const std::vector<std::string>& tokens) {
         } else if (tokens[i] == "2>" && i + 1 < tokens.size()) {
             cmd.has_stderr_redirection = true;
             cmd.stderr_file = tokens[i + 1];
+            cmd.append_stderr = false;
+            i++; // Skip the file name
+        } else if (tokens[i] == "2>>" && i + 1 < tokens.size()) {
+            cmd.has_stderr_redirection = true;
+            cmd.stderr_file = tokens[i + 1];
+            cmd.append_stderr = true;
             i++; // Skip the file name
         } else {
             cmd.args.push_back(tokens[i]);
@@ -180,7 +187,8 @@ void execute_program(const std::string& program_path, const Command& cmd) {
 
         // Handle stderr redirection
         if (cmd.has_stderr_redirection) {
-            int fd = open(cmd.stderr_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            int flags = O_WRONLY | O_CREAT | (cmd.append_stderr ? O_APPEND : O_TRUNC);
+            int fd = open(cmd.stderr_file.c_str(), flags, 0644);
             if (fd == -1) {
                 std::cerr << "Error opening error output file" << std::endl;
                 exit(1);
@@ -286,7 +294,8 @@ int main() {
             }
         }
         if (cmd.has_stderr_redirection) {
-            int fd = open(cmd.stderr_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            int flags = O_WRONLY | O_CREAT | (cmd.append_stderr ? O_APPEND : O_TRUNC);
+            int fd = open(cmd.stderr_file.c_str(), flags, 0644);
             if (fd != -1) {
                 dup2(fd, STDERR_FILENO);
                 close(fd);
