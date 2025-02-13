@@ -74,8 +74,15 @@ std::vector<std::string> split_input(const std::string& input) {
             break;
 
         std::string token;
-        // Process a token until we hit whitespace
-        while (i < input.size() && !std::isspace(input[i])) {
+        // Process a token until we hit unescaped whitespace
+        while (i < input.size()) {
+            if (input[i] == '\\' && i + 1 < input.size()) {
+                // Handle backslash escaping outside quotes
+                token.push_back(input[i + 1]);
+                i += 2;
+                continue;
+            }
+            
             if (input[i] == '\'') {
                 // Single quotes - preserve everything literally
                 ++i;  // Skip the opening quote
@@ -100,6 +107,8 @@ std::vector<std::string> split_input(const std::string& input) {
                     ++i;
                 }
                 if (i < input.size()) ++i;  // Skip the closing quote
+            } else if (std::isspace(input[i])) {
+                break;  // End of token
             } else {
                 token.push_back(input[i]);
                 ++i;
