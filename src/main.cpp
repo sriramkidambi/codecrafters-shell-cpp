@@ -129,6 +129,7 @@ struct Command {
     std::string stderr_file;
     bool has_stdout_redirection = false;
     bool has_stderr_redirection = false;
+    bool append_stdout = false;
 };
 
 // Helper function to parse command and redirection
@@ -139,6 +140,12 @@ Command parse_command(const std::vector<std::string>& tokens) {
         if ((tokens[i] == ">" || tokens[i] == "1>") && i + 1 < tokens.size()) {
             cmd.has_stdout_redirection = true;
             cmd.stdout_file = tokens[i + 1];
+            cmd.append_stdout = false;
+            i++; // Skip the file name
+        } else if ((tokens[i] == ">>" || tokens[i] == "1>>") && i + 1 < tokens.size()) {
+            cmd.has_stdout_redirection = true;
+            cmd.stdout_file = tokens[i + 1];
+            cmd.append_stdout = true;
             i++; // Skip the file name
         } else if (tokens[i] == "2>" && i + 1 < tokens.size()) {
             cmd.has_stderr_redirection = true;
@@ -158,7 +165,8 @@ void execute_program(const std::string& program_path, const Command& cmd) {
     if (pid == 0) {  // Child process
         // Handle stdout redirection
         if (cmd.has_stdout_redirection) {
-            int fd = open(cmd.stdout_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            int flags = O_WRONLY | O_CREAT | (cmd.append_stdout ? O_APPEND : O_TRUNC);
+            int fd = open(cmd.stdout_file.c_str(), flags, 0644);
             if (fd == -1) {
                 std::cerr << "Error opening output file" << std::endl;
                 exit(1);
@@ -270,7 +278,8 @@ int main() {
         
         // Handle redirections for builtin commands
         if (cmd.has_stdout_redirection) {
-            int fd = open(cmd.stdout_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            int flags = O_WRONLY | O_CREAT | (cmd.append_stdout ? O_APPEND : O_TRUNC);
+            int fd = open(cmd.stdout_file.c_str(), flags, 0644);
             if (fd != -1) {
                 dup2(fd, STDOUT_FILENO);
                 close(fd);
