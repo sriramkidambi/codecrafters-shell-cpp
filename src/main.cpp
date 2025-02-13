@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 
 // Helper function to check if a command is a builtin
 bool is_builtin(const std::string& cmd) {
-  const std::vector<std::string> builtins = {"echo", "exit", "type"};
+  const std::vector<std::string> builtins = {"echo", "exit", "type", "pwd"};
   for (const auto& builtin : builtins) {
     if (cmd == builtin) {
       return true;
@@ -121,6 +121,12 @@ int main() {
     if (cmd == "echo") {
       // Print everything after "echo "
       std::cout << input.substr(5) << std::endl;
+      continue;
+    }
+
+    // Check for pwd command
+    if (cmd == "pwd") {
+      std::cout << fs::current_path().string() << std::endl;
       continue;
     }
     
