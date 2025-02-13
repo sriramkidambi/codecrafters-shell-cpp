@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <cstring>
 #include <cerrno>
+#include <fcntl.h>
 
 namespace fs = std::filesystem;
 
@@ -121,26 +122,67 @@ std::vector<std::string> split_input(const std::string& input) {
     return tokens;
 }
 
-// Helper function to execute external program
-void execute_program(const std::string& program_path, const std::vector<std::string>& args) {
-  pid_t pid = fork();
-  if (pid == 0) {  // Child process
-    // Prepare arguments for execv
-    std::vector<char*> c_args;
-    c_args.push_back(const_cast<char*>(args[0].c_str()));  // Program name
-    for (size_t i = 1; i < args.size(); i++) {
-      c_args.push_back(const_cast<char*>(args[i].c_str()));
-    }
-    c_args.push_back(nullptr);  // Null terminator
+// Structure to hold command and redirection information
+struct Command {
+    std::vector<std::string> args;
+    std::string output_file;
+    bool has_redirection = false;
+};
 
-    execv(program_path.c_str(), c_args.data());
-    // If execv returns, there was an error
-    std::cerr << "Error executing program" << std::endl;
-    exit(1);
-  } else if (pid > 0) {  // Parent process
-    int status;
-    waitpid(pid, &status, 0);
-  }
+// Helper function to parse command and redirection
+Command parse_command(const std::vector<std::string>& tokens) {
+    Command cmd;
+    
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        if (tokens[i] == ">" || tokens[i] == "1>") {
+            if (i + 1 < tokens.size()) {
+                cmd.has_redirection = true;
+                cmd.output_file = tokens[i + 1];
+                i++; // Skip the file name
+            }
+        } else {
+            cmd.args.push_back(tokens[i]);
+        }
+    }
+    
+    return cmd;
+}
+
+// Helper function to execute external program with possible redirection
+void execute_program(const std::string& program_path, const Command& cmd) {
+    pid_t pid = fork();
+    if (pid == 0) {  // Child process
+        if (cmd.has_redirection) {
+            // Open the output file
+            int fd = open(cmd.output_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd == -1) {
+                std::cerr << "Error opening output file" << std::endl;
+                exit(1);
+            }
+            // Redirect stdout to the file
+            if (dup2(fd, STDOUT_FILENO) == -1) {
+                std::cerr << "Error redirecting output" << std::endl;
+                exit(1);
+            }
+            close(fd);
+        }
+
+        // Prepare arguments for execv
+        std::vector<char*> c_args;
+        c_args.push_back(const_cast<char*>(cmd.args[0].c_str()));  // Program name
+        for (size_t i = 1; i < cmd.args.size(); i++) {
+            c_args.push_back(const_cast<char*>(cmd.args[i].c_str()));
+        }
+        c_args.push_back(nullptr);  // Null terminator
+
+        execv(program_path.c_str(), c_args.data());
+        // If execv returns, there was an error
+        std::cerr << "Error executing program" << std::endl;
+        exit(1);
+    } else if (pid > 0) {  // Parent process
+        int status;
+        waitpid(pid, &status, 0);
+    }
 }
 
 int main() {
@@ -169,38 +211,61 @@ int main() {
     auto tokens = split_input(input);
     if (tokens.empty()) continue;
 
-    std::string cmd = tokens[0];
+    // Parse command and redirection
+    Command cmd = parse_command(tokens);
+    if (cmd.args.empty()) continue;
+
+    std::string command = cmd.args[0];
     
     // Check for exit command
-    if (cmd == "exit" && tokens.size() == 2 && tokens[1] == "0") {
+    if (command == "exit" && cmd.args.size() == 2 && cmd.args[1] == "0") {
       return 0;  // Exit with status code 0
     }
     
     // Check for echo command
-    if (cmd == "echo") {
-      // Skip the echo command itself and print remaining tokens with spaces
-      for (size_t i = 1; i < tokens.size(); ++i) {
-        if (i > 1) std::cout << " ";
-        std::cout << tokens[i];
+    if (command == "echo") {
+      std::string output;
+      for (size_t i = 1; i < cmd.args.size(); ++i) {
+        if (i > 1) output += " ";
+        output += cmd.args[i];
       }
-      std::cout << std::endl;
+      output += "\n";
+
+      if (cmd.has_redirection) {
+        int fd = open(cmd.output_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd != -1) {
+          write(fd, output.c_str(), output.length());
+          close(fd);
+        }
+      } else {
+        std::cout << output;
+      }
       continue;
     }
 
     // Check for pwd command
-    if (cmd == "pwd") {
-      std::cout << fs::current_path().string() << std::endl;
+    if (command == "pwd") {
+      std::string output = fs::current_path().string() + "\n";
+      if (cmd.has_redirection) {
+        int fd = open(cmd.output_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd != -1) {
+          write(fd, output.c_str(), output.length());
+          close(fd);
+        }
+      } else {
+        std::cout << output;
+      }
       continue;
     }
 
     // Check for cd command
-    if (cmd == "cd") {
-      if (tokens.size() != 2) {
+    if (command == "cd") {
+      if (cmd.args.size() != 2) {
         std::cerr << "cd: wrong number of arguments" << std::endl;
         continue;
       }
 
-      std::string path = tokens[1];
+      std::string path = cmd.args[1];
       
       // Handle ~ for home directory
       if (path == "~") {
@@ -219,8 +284,8 @@ int main() {
     }
     
     // Check for type command
-    if (cmd == "type" && tokens.size() == 2) {
-      std::string target = tokens[1];
+    if (command == "type" && cmd.args.size() == 2) {
+      std::string target = cmd.args[1];
       
       // First check if it's a builtin
       if (is_builtin(target)) {
@@ -238,11 +303,11 @@ int main() {
     }
     
     // Try to execute as external program
-    std::string program_path = find_in_path(cmd);
+    std::string program_path = find_in_path(command);
     if (!program_path.empty()) {
-      execute_program(program_path, tokens);
+      execute_program(program_path, cmd);
     } else {
-      std::cout << cmd << ": command not found" << std::endl;
+      std::cout << command << ": command not found" << std::endl;
     }
   }
 
