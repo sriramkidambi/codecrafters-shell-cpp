@@ -279,7 +279,29 @@ void disableRawMode() {
     tcsetattr(STDIN_FILENO, TCSANOW, &term);
 }
 
-// Update the input handling to support multi-completion
+// Add this helper function to find the longest common prefix
+std::string find_longest_common_prefix(const std::vector<std::string>& strings) {
+    if (strings.empty()) return "";
+    if (strings.size() == 1) return strings[0];
+    
+    size_t prefix_len = 0;
+    bool all_match = true;
+    
+    while (all_match && prefix_len < strings[0].length()) {
+        char current = strings[0][prefix_len];
+        for (size_t i = 1; i < strings.size(); i++) {
+            if (prefix_len >= strings[i].length() || strings[i][prefix_len] != current) {
+                all_match = false;
+                break;
+            }
+        }
+        if (all_match) prefix_len++;
+    }
+    
+    return strings[0].substr(0, prefix_len);
+}
+
+// Update the tab handling in readInputWithTabSupport
 void readInputWithTabSupport(std::string& input) {
     enableRawMode();
     char c;
@@ -299,14 +321,21 @@ void readInputWithTabSupport(std::string& input) {
                 std::string original = input;
                 auto completions = get_possible_completions(original);
                 
-                if (completions.size() == 1) {
+                if (completions.empty()) {
+                    std::cout << '\a' << std::flush;
+                } else if (completions.size() == 1) {
+                    // Single completion - add space
                     input = completions[0] + " ";
                     std::cout << "\r$ " << input << std::flush;
-                    pending_completion = false;
-                    current_completions.clear();
-                } else if (completions.size() > 1) {
-                    if (pending_completion) {
-                        // Display all matches on second tab
+                } else {
+                    // Find longest common prefix
+                    std::string prefix = find_longest_common_prefix(completions);
+                    if (prefix.length() > input.length()) {
+                        // Can complete further
+                        input = prefix;
+                        std::cout << "\r$ " << input << std::flush;
+                    } else if (pending_completion) {
+                        // Show all possibilities on second tab
                         std::cout << "\n";
                         for (size_t i = 0; i < completions.size(); ++i) {
                             if (i > 0) std::cout << "  ";
@@ -314,19 +343,13 @@ void readInputWithTabSupport(std::string& input) {
                         }
                         std::cout << "\n$ " << input << std::flush;
                         pending_completion = false;
-                        current_completions.clear();
                     } else {
-                        // Store matches and ring bell on first tab
-                        current_completions = completions;
-                        pending_completion = true;
+                        // First tab - ring bell
                         std::cout << '\a' << std::flush;
+                        pending_completion = true;
                     }
-                } else {
-                    // No matches found
-                    std::cout << '\a' << std::flush;
-                    pending_completion = false;
-                    current_completions.clear();
                 }
+                current_completions = completions;
             }
         } else if (c == 127) { // Backspace
             if (!input.empty()) {
@@ -334,12 +357,10 @@ void readInputWithTabSupport(std::string& input) {
                 std::cout << "\b \b";
             }
             pending_completion = false;
-            current_completions.clear();
         } else if (c >= 32 && c < 127) { // Printable characters
             input += c;
             std::cout << c;
             pending_completion = false;
-            current_completions.clear();
         }
     }
     
