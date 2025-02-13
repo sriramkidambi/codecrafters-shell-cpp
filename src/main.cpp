@@ -14,6 +14,7 @@
 #include <numeric>
 #include <fstream>
 #include <set>
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
