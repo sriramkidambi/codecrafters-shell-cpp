@@ -13,6 +13,7 @@
 #include <optional>
 #include <numeric>
 #include <fstream>
+#include <set>
 
 namespace fs = std::filesystem;
 
@@ -222,15 +223,42 @@ void execute_program(const std::string& program_path, const Command& cmd) {
     }
 }
 
-// Update autocomplete function to include all builtins
+// Update autocomplete function to check both builtins and external executables
 std::string autocomplete(const std::string& input) {
-  const std::vector<std::string> builtins = {"echo", "exit", "type", "pwd", "cd"};
-  for (const auto& builtin : builtins) {
-    if (builtin.find(input) == 0) {  // Check if input is a prefix
-      return builtin + " ";  // Return the completed command with a space
+    // Check built-in commands first
+    const std::vector<std::string> builtins = {"echo", "exit", "type", "pwd", "cd"};
+    for (const auto& builtin : builtins) {
+        if (builtin.find(input) == 0) {
+            return builtin + " ";
+        }
     }
-  }
-  return input;  // Return the input unchanged if no match
+
+    // Check for external executables in PATH
+    std::set<std::string> matches;
+    auto dirs = get_path_dirs();
+    for (const auto& dir : dirs) {
+        if (!fs::is_directory(dir)) continue;
+        
+        try {
+            for (const auto& entry : fs::directory_iterator(dir)) {
+                if (entry.is_regular_file() && 
+                    ::access(entry.path().c_str(), X_OK) == 0) {
+                    std::string filename = entry.path().filename().string();
+                    if (filename.find(input) == 0) {
+                        matches.insert(filename);
+                    }
+                }
+            }
+        } catch (const std::exception&) {
+            // Ignore directories we can't access
+        }
+    }
+
+    if (matches.size() == 1) {
+        return *matches.begin() + " ";
+    }
+
+    return input;
 }
 
 void enableRawMode() {
