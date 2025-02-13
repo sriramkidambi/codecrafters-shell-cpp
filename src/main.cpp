@@ -125,8 +125,10 @@ std::vector<std::string> split_input(const std::string& input) {
 // Structure to hold command and redirection information
 struct Command {
     std::vector<std::string> args;
-    std::string output_file;
-    bool has_redirection = false;
+    std::string stdout_file;
+    std::string stderr_file;
+    bool has_stdout_redirection = false;
+    bool has_stderr_redirection = false;
 };
 
 // Helper function to parse command and redirection
@@ -134,12 +136,14 @@ Command parse_command(const std::vector<std::string>& tokens) {
     Command cmd;
     
     for (size_t i = 0; i < tokens.size(); ++i) {
-        if (tokens[i] == ">" || tokens[i] == "1>") {
-            if (i + 1 < tokens.size()) {
-                cmd.has_redirection = true;
-                cmd.output_file = tokens[i + 1];
-                i++; // Skip the file name
-            }
+        if ((tokens[i] == ">" || tokens[i] == "1>") && i + 1 < tokens.size()) {
+            cmd.has_stdout_redirection = true;
+            cmd.stdout_file = tokens[i + 1];
+            i++; // Skip the file name
+        } else if (tokens[i] == "2>" && i + 1 < tokens.size()) {
+            cmd.has_stderr_redirection = true;
+            cmd.stderr_file = tokens[i + 1];
+            i++; // Skip the file name
         } else {
             cmd.args.push_back(tokens[i]);
         }
@@ -152,16 +156,29 @@ Command parse_command(const std::vector<std::string>& tokens) {
 void execute_program(const std::string& program_path, const Command& cmd) {
     pid_t pid = fork();
     if (pid == 0) {  // Child process
-        if (cmd.has_redirection) {
-            // Open the output file
-            int fd = open(cmd.output_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        // Handle stdout redirection
+        if (cmd.has_stdout_redirection) {
+            int fd = open(cmd.stdout_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
             if (fd == -1) {
                 std::cerr << "Error opening output file" << std::endl;
                 exit(1);
             }
-            // Redirect stdout to the file
             if (dup2(fd, STDOUT_FILENO) == -1) {
                 std::cerr << "Error redirecting output" << std::endl;
+                exit(1);
+            }
+            close(fd);
+        }
+
+        // Handle stderr redirection
+        if (cmd.has_stderr_redirection) {
+            int fd = open(cmd.stderr_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd == -1) {
+                std::cerr << "Error opening error output file" << std::endl;
+                exit(1);
+            }
+            if (dup2(fd, STDERR_FILENO) == -1) {
+                std::cerr << "Error redirecting error output" << std::endl;
                 exit(1);
             }
             close(fd);
@@ -182,6 +199,24 @@ void execute_program(const std::string& program_path, const Command& cmd) {
     } else if (pid > 0) {  // Parent process
         int status;
         waitpid(pid, &status, 0);
+    }
+}
+
+// Helper function to write output with redirection
+void write_output(const std::string& output, const Command& cmd, bool is_error = false) {
+    if ((is_error && cmd.has_stderr_redirection) || (!is_error && cmd.has_stdout_redirection)) {
+        const std::string& file = is_error ? cmd.stderr_file : cmd.stdout_file;
+        int fd = open(file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd != -1) {
+            write(fd, output.c_str(), output.length());
+            close(fd);
+        }
+    } else {
+        if (is_error) {
+            std::cerr << output;
+        } else {
+            std::cout << output;
+        }
     }
 }
 
@@ -230,38 +265,22 @@ int main() {
         output += cmd.args[i];
       }
       output += "\n";
-
-      if (cmd.has_redirection) {
-        int fd = open(cmd.output_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (fd != -1) {
-          write(fd, output.c_str(), output.length());
-          close(fd);
-        }
-      } else {
-        std::cout << output;
-      }
+      write_output(output, cmd);
       continue;
     }
 
     // Check for pwd command
     if (command == "pwd") {
       std::string output = fs::current_path().string() + "\n";
-      if (cmd.has_redirection) {
-        int fd = open(cmd.output_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (fd != -1) {
-          write(fd, output.c_str(), output.length());
-          close(fd);
-        }
-      } else {
-        std::cout << output;
-      }
+      write_output(output, cmd);
       continue;
     }
 
     // Check for cd command
     if (command == "cd") {
       if (cmd.args.size() != 2) {
-        std::cerr << "cd: wrong number of arguments" << std::endl;
+        std::string error = "cd: wrong number of arguments\n";
+        write_output(error, cmd, true);
         continue;
       }
 
@@ -271,14 +290,16 @@ int main() {
       if (path == "~") {
         std::string home = get_home_directory();
         if (home.empty()) {
-          std::cerr << "cd: HOME not set" << std::endl;
+          std::string error = "cd: HOME not set\n";
+          write_output(error, cmd, true);
           continue;
         }
         path = home;
       }
 
       if (chdir(path.c_str()) != 0) {
-        std::cerr << "cd: " << path << ": No such file or directory" << std::endl;
+        std::string error = "cd: " + path + ": No such file or directory\n";
+        write_output(error, cmd, true);
       }
       continue;
     }
