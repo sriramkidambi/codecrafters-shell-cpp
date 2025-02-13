@@ -23,6 +23,13 @@ int main() {
       return 0;  // Exit with status code 0
     }
     
+    // Check for echo command
+    if (input.substr(0, 5) == "echo ") {
+      // Print everything after "echo "
+      std::cout << input.substr(5) << std::endl;
+      continue;
+    }
+    
     // For now, all other commands are invalid
     std::cout << input << ": command not found" << std::endl;
   }
