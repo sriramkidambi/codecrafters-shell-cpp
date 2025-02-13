@@ -156,8 +156,12 @@ int main() {
     
     // Check for echo command
     if (cmd == "echo") {
-      // Print everything after "echo "
-      std::cout << input.substr(5) << std::endl;
+      // Skip the echo command itself and print remaining tokens with spaces
+      for (size_t i = 1; i < tokens.size(); ++i) {
+        if (i > 1) std::cout << " ";
+        std::cout << tokens[i];
+      }
+      std::cout << std::endl;
       continue;
     }
 
