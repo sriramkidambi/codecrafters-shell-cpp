@@ -22,6 +22,15 @@ bool is_builtin(const std::string& cmd) {
   return false;
 }
 
+// Helper function to get home directory
+std::string get_home_directory() {
+  const char* home = std::getenv("HOME");
+  if (!home) {
+    return "";
+  }
+  return std::string(home);
+}
+
 // Helper function to split PATH into directories
 std::vector<std::string> get_path_dirs() {
   std::vector<std::string> dirs;
@@ -138,7 +147,18 @@ int main() {
         continue;
       }
 
-      const std::string& path = tokens[1];
+      std::string path = tokens[1];
+      
+      // Handle ~ for home directory
+      if (path == "~") {
+        std::string home = get_home_directory();
+        if (home.empty()) {
+          std::cerr << "cd: HOME not set" << std::endl;
+          continue;
+        }
+        path = home;
+      }
+
       if (chdir(path.c_str()) != 0) {
         std::cerr << "cd: " << path << ": No such file or directory" << std::endl;
       }
