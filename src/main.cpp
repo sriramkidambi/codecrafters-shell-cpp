@@ -7,12 +7,13 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <cstring>
+#include <cerrno>
 
 namespace fs = std::filesystem;
 
 // Helper function to check if a command is a builtin
 bool is_builtin(const std::string& cmd) {
-  const std::vector<std::string> builtins = {"echo", "exit", "type", "pwd"};
+  const std::vector<std::string> builtins = {"echo", "exit", "type", "pwd", "cd"};
   for (const auto& builtin : builtins) {
     if (cmd == builtin) {
       return true;
@@ -127,6 +128,20 @@ int main() {
     // Check for pwd command
     if (cmd == "pwd") {
       std::cout << fs::current_path().string() << std::endl;
+      continue;
+    }
+
+    // Check for cd command
+    if (cmd == "cd") {
+      if (tokens.size() != 2) {
+        std::cerr << "cd: wrong number of arguments" << std::endl;
+        continue;
+      }
+
+      const std::string& path = tokens[1];
+      if (chdir(path.c_str()) != 0) {
+        std::cerr << "cd: " << path << ": No such file or directory" << std::endl;
+      }
       continue;
     }
     
