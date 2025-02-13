@@ -221,120 +221,141 @@ void write_output(const std::string& output, const Command& cmd, bool is_error =
 }
 
 int main() {
-  // Flush after every std::cout / std:cerr
-  std::cout << std::unitbuf;
-  std::cerr << std::unitbuf;
+    // Flush after every std::cout / std:cerr
+    std::cout << std::unitbuf;
+    std::cerr << std::unitbuf;
 
-  std::string input;
-  
-  // Main REPL loop
-  while (true) {
-    std::cout << "$ ";  // Print prompt
+    std::string input;
     
-    // Read input
-    if (!std::getline(std::cin, input)) {
-      // Exit if we hit EOF (Ctrl+D) or encounter an error
-      break;
-    }
-    
-    // Skip empty input
-    if (input.empty()) {
-      continue;
-    }
+    // Main REPL loop
+    while (true) {
+        // Save original file descriptors
+        int original_stdout = dup(STDOUT_FILENO);
+        int original_stderr = dup(STDERR_FILENO);
 
-    // Split input into tokens
-    auto tokens = split_input(input);
-    if (tokens.empty()) continue;
-
-    // Parse command and redirection
-    Command cmd = parse_command(tokens);
-    if (cmd.args.empty()) continue;
-
-    std::string command = cmd.args[0];
-    
-    // Check for exit command
-    if (command == "exit" && cmd.args.size() == 2 && cmd.args[1] == "0") {
-      return 0;  // Exit with status code 0
-    }
-    
-    // Check for echo command
-    if (command == "echo") {
-        std::string output;
-        for (size_t i = 1; i < cmd.args.size(); ++i) {
-            if (i > 1) output += " ";
-            output += cmd.args[i];
+        std::cout << "$ ";  // Print prompt
+        
+        // Read input
+        if (!std::getline(std::cin, input)) {
+            // Exit if we hit EOF (Ctrl+D) or encounter an error
+            close(original_stdout);
+            close(original_stderr);
+            break;
         }
-        output += "\n";
-
-        // For echo, we only write to stdout if there's no stderr redirection
-        if (!cmd.has_stderr_redirection) {
-            write_output(output, cmd);
+        
+        // Skip empty input
+        if (input.empty()) {
+            close(original_stdout);
+            close(original_stderr);
+            continue;
         }
-        continue;
-    }
 
-    // Check for pwd command
-    if (command == "pwd") {
-      std::string output = fs::current_path().string() + "\n";
-      write_output(output, cmd);
-      continue;
-    }
-
-    // Check for cd command
-    if (command == "cd") {
-      if (cmd.args.size() != 2) {
-        std::string error = "cd: wrong number of arguments\n";
-        write_output(error, cmd, true);
-        continue;
-      }
-
-      std::string path = cmd.args[1];
-      
-      // Handle ~ for home directory
-      if (path == "~") {
-        std::string home = get_home_directory();
-        if (home.empty()) {
-          std::string error = "cd: HOME not set\n";
-          write_output(error, cmd, true);
-          continue;
+        // Split input into tokens
+        auto tokens = split_input(input);
+        if (tokens.empty()) {
+            close(original_stdout);
+            close(original_stderr);
+            continue;
         }
-        path = home;
-      }
 
-      if (chdir(path.c_str()) != 0) {
-        std::string error = "cd: " + path + ": No such file or directory\n";
-        write_output(error, cmd, true);
-      }
-      continue;
-    }
-    
-    // Check for type command
-    if (command == "type" && cmd.args.size() == 2) {
-      std::string target = cmd.args[1];
-      
-      // First check if it's a builtin
-      if (is_builtin(target)) {
-        std::cout << target << " is a shell builtin" << std::endl;
-      } else {
-        // If not a builtin, search in PATH
-        std::string cmd_path = find_in_path(target);
-        if (!cmd_path.empty()) {
-          std::cout << target << " is " << cmd_path << std::endl;
-        } else {
-          std::cout << target << ": not found" << std::endl;
+        // Parse command and redirection
+        Command cmd = parse_command(tokens);
+        if (cmd.args.empty()) {
+            close(original_stdout);
+            close(original_stderr);
+            continue;
         }
-      }
-      continue;
-    }
-    
-    // Try to execute as external program
-    std::string program_path = find_in_path(command);
-    if (!program_path.empty()) {
-      execute_program(program_path, cmd);
-    } else {
-      std::cout << command << ": command not found" << std::endl;
-    }
-  }
 
-  return 0;
+        std::string command = cmd.args[0];
+        
+        // Handle redirections for builtin commands
+        if (cmd.has_stdout_redirection) {
+            int fd = open(cmd.stdout_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd != -1) {
+                dup2(fd, STDOUT_FILENO);
+                close(fd);
+            }
+        }
+        if (cmd.has_stderr_redirection) {
+            int fd = open(cmd.stderr_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd != -1) {
+                dup2(fd, STDERR_FILENO);
+                close(fd);
+            }
+        }
+        
+        // Check for exit command
+        if (command == "exit" && cmd.args.size() == 2 && cmd.args[1] == "0") {
+            close(original_stdout);
+            close(original_stderr);
+            return 0;  // Exit with status code 0
+        }
+        
+        // Check for echo command
+        if (command == "echo") {
+            for (size_t i = 1; i < cmd.args.size(); ++i) {
+                if (i > 1) std::cout << " ";
+                std::cout << cmd.args[i];
+            }
+            std::cout << std::endl;
+        }
+        // Check for pwd command
+        else if (command == "pwd") {
+            std::cout << fs::current_path().string() << std::endl;
+        }
+        // Check for cd command
+        else if (command == "cd") {
+            if (cmd.args.size() != 2) {
+                std::cerr << "cd: wrong number of arguments" << std::endl;
+            } else {
+                std::string path = cmd.args[1];
+                
+                // Handle ~ for home directory
+                if (path == "~") {
+                    std::string home = get_home_directory();
+                    if (home.empty()) {
+                        std::cerr << "cd: HOME not set" << std::endl;
+                    } else {
+                        path = home;
+                    }
+                }
+
+                if (chdir(path.c_str()) != 0) {
+                    std::cerr << "cd: " << path << ": No such file or directory" << std::endl;
+                }
+            }
+        }
+        // Check for type command
+        else if (command == "type" && cmd.args.size() == 2) {
+            std::string target = cmd.args[1];
+            
+            if (is_builtin(target)) {
+                std::cout << target << " is a shell builtin" << std::endl;
+            } else {
+                std::string cmd_path = find_in_path(target);
+                if (!cmd_path.empty()) {
+                    std::cout << target << " is " << cmd_path << std::endl;
+                } else {
+                    std::cout << target << ": not found" << std::endl;
+                }
+            }
+        }
+        // Try to execute as external program
+        else {
+            std::string program_path = find_in_path(command);
+            if (!program_path.empty()) {
+                execute_program(program_path, cmd);
+            } else {
+                std::cout << command << ": command not found" << std::endl;
+            }
+        }
+
+        // Restore original file descriptors
+        dup2(original_stdout, STDOUT_FILENO);
+        dup2(original_stderr, STDERR_FILENO);
+        close(original_stdout);
+        close(original_stderr);
+    }
+
+    return 0;
 }
