@@ -222,15 +222,15 @@ void execute_program(const std::string& program_path, const Command& cmd) {
     }
 }
 
-// Function to handle autocompletion
+// Update autocomplete function to include all builtins
 std::string autocomplete(const std::string& input) {
-    const std::vector<std::string> builtins = {"echo", "exit"};
-    for (const auto& builtin : builtins) {
-        if (builtin.find(input) == 0) {  // Check if input is a prefix
-            return builtin + " ";  // Return the completed command with a space
-        }
+  const std::vector<std::string> builtins = {"echo", "exit", "type", "pwd", "cd"};
+  for (const auto& builtin : builtins) {
+    if (builtin.find(input) == 0) {  // Check if input is a prefix
+      return builtin + " ";  // Return the completed command with a space
     }
-    return input;  // Return the input unchanged if no match
+  }
+  return input;  // Return the input unchanged if no match
 }
 
 void enableRawMode() {
@@ -247,15 +247,7 @@ void disableRawMode() {
     tcsetattr(STDIN_FILENO, TCSANOW, &term);
 }
 
-// Function to complete command
-void completeCommand(std::string& input) {
-    if (input == "ech") {
-        input = "echo";
-    } else if (input == "typ") {
-        input = "type";
-    }
-}
-
+// Update the input handling in readInputWithTabSupport
 void readInputWithTabSupport(std::string& input) {
     enableRawMode();
     char c;
@@ -267,9 +259,14 @@ void readInputWithTabSupport(std::string& input) {
             std::cout << std::endl;
             break;
         } else if (c == '\t') {
-            completeCommand(input);
-            input += " ";
-            std::cout << "\r$ " << input;
+            if (input.find(' ') == std::string::npos) { // Only autocomplete command if no spaces
+                std::string original = input;
+                input = autocomplete(original);
+                if (input != original) {
+                    // Update the displayed line
+                    std::cout << "\r$ " << input << std::flush;
+                }
+            }
         } else if (c == 127) { // Backspace
             if (!input.empty()) {
                 input.pop_back();
