@@ -247,20 +247,54 @@ void disableRawMode() {
     tcsetattr(STDIN_FILENO, TCSANOW, &term);
 }
 
-void handleTabPress(std::string& input) {
-    if(input == "ech") {
-        input = "echo ";
-        std::cout << "o ";
+void handleTabPress(std::string& input, size_t& cursor_pos) {
+    // Split input at cursor position to get the command part
+    std::string before_cursor = input.substr(0, cursor_pos);
+    std::string after_cursor = input.substr(cursor_pos);
+    
+    // Split by space to get the first word (command)
+    std::string command;
+    size_t space_pos = before_cursor.find(' ');
+    if (space_pos == std::string::npos) {
+        command = before_cursor;
+    } else {
+        command = before_cursor.substr(0, space_pos);
     }
-    else if(input == "exi") {
-        input = "exit ";
-        std::cout << "t ";
+
+    // Only autocomplete if we're editing the command part
+    if (space_pos == std::string::npos) {
+        if(command == "ech") {
+            // Calculate the difference in length
+            size_t old_len = command.length();
+            std::string completion = "echo";
+            size_t new_len = completion.length();
+            
+            // Replace the command part while preserving any arguments
+            input = completion + after_cursor;
+            cursor_pos = new_len;
+            
+            // Print the completion
+            std::cout << input.substr(old_len);
+            std::cout << "\x1b[" << (input.length() - cursor_pos) << "D"; // Move cursor back
+        }
+        else if(command == "typ") {
+            size_t old_len = command.length();
+            std::string completion = "type";
+            size_t new_len = completion.length();
+            
+            input = completion + after_cursor;
+            cursor_pos = new_len;
+            
+            std::cout << input.substr(old_len);
+            std::cout << "\x1b[" << (input.length() - cursor_pos) << "D";
+        }
     }
 }
 
 void readInputWithTabSupport(std::string& input) {
     enableRawMode();
     char c;
+    size_t cursor_pos = 0;
     
     while (true) {
         c = getchar();
@@ -268,15 +302,24 @@ void readInputWithTabSupport(std::string& input) {
             std::cout << std::endl;
             break;
         } else if (c == '\t') {
-            handleTabPress(input);
+            handleTabPress(input, cursor_pos);
         } else if (c == 127) { // Backspace
-            if (!input.empty()) {
-                input.pop_back();
+            if (!input.empty() && cursor_pos > 0) {
+                input.erase(cursor_pos - 1, 1);
+                cursor_pos--;
                 std::cout << "\b \b"; // Move cursor back, overwrite with space, move back again
             }
-        } else {
-            input += c;
-            std::cout << c;
+        } else if (c >= 32 && c < 127) { // Printable characters
+            input.insert(cursor_pos, 1, c);
+            cursor_pos++;
+            
+            // Print the character and any remaining text
+            std::cout << input.substr(cursor_pos - 1);
+            
+            // Move cursor back to position if needed
+            if (cursor_pos < input.length()) {
+                std::cout << "\x1b[" << (input.length() - cursor_pos) << "D";
+            }
         }
     }
     
