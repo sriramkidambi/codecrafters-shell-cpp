@@ -265,6 +265,9 @@ void readInputWithTabSupport(std::string& input) {
                 if (input != original) {
                     // Update the displayed line
                     std::cout << "\r$ " << input << std::flush;
+                } else {
+                    // Ring bell for invalid completion
+                    std::cout << '\a' << std::flush;
                 }
             }
         } else if (c == 127) { // Backspace
