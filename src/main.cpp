@@ -77,24 +77,37 @@ std::vector<std::string> split_input(const std::string& input) {
         // Process a token until we hit whitespace
         while (i < input.size() && !std::isspace(input[i])) {
             if (input[i] == '\'') {
-                // Skip the opening single quote
-                ++i;
-                // Append everything within the quotes literally
+                // Single quotes - preserve everything literally
+                ++i;  // Skip the opening quote
                 while (i < input.size() && input[i] != '\'') {
                     token.push_back(input[i]);
                     ++i;
                 }
-                // Skip the closing single quote if present
-                if (i < input.size() && input[i] == '\'') {
+                if (i < input.size()) ++i;  // Skip the closing quote
+            } else if (input[i] == '"') {
+                // Double quotes - handle backslash escapes
+                ++i;  // Skip the opening quote
+                while (i < input.size() && input[i] != '"') {
+                    if (input[i] == '\\' && i + 1 < input.size()) {
+                        char next = input[i + 1];
+                        if (next == '\\' || next == '$' || next == '"' || next == '\n') {
+                            token.push_back(next);
+                            i += 2;
+                            continue;
+                        }
+                    }
+                    token.push_back(input[i]);
                     ++i;
                 }
+                if (i < input.size()) ++i;  // Skip the closing quote
             } else {
-                // Normal character add to token
                 token.push_back(input[i]);
                 ++i;
             }
         }
-        tokens.push_back(token);
+        if (!token.empty()) {
+            tokens.push_back(token);
+        }
     }
     return tokens;
 }
