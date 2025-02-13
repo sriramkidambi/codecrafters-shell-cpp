@@ -4,6 +4,9 @@
 #include <cstdlib>
 #include <filesystem>
 #include <sstream>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <cstring>
 
 namespace fs = std::filesystem;
 
@@ -48,6 +51,39 @@ std::string find_in_path(const std::string& cmd) {
   return "";
 }
 
+// Helper function to split input into tokens
+std::vector<std::string> split_input(const std::string& input) {
+  std::vector<std::string> tokens;
+  std::stringstream ss(input);
+  std::string token;
+  while (ss >> token) {
+    tokens.push_back(token);
+  }
+  return tokens;
+}
+
+// Helper function to execute external program
+void execute_program(const std::string& program_path, const std::vector<std::string>& args) {
+  pid_t pid = fork();
+  if (pid == 0) {  // Child process
+    // Prepare arguments for execv
+    std::vector<char*> c_args;
+    c_args.push_back(const_cast<char*>(args[0].c_str()));  // Program name
+    for (size_t i = 1; i < args.size(); i++) {
+      c_args.push_back(const_cast<char*>(args[i].c_str()));
+    }
+    c_args.push_back(nullptr);  // Null terminator
+
+    execv(program_path.c_str(), c_args.data());
+    // If execv returns, there was an error
+    std::cerr << "Error executing program" << std::endl;
+    exit(1);
+  } else if (pid > 0) {  // Parent process
+    int status;
+    waitpid(pid, &status, 0);
+  }
+}
+
 int main() {
   // Flush after every std::cout / std:cerr
   std::cout << std::unitbuf;
@@ -65,39 +101,55 @@ int main() {
       break;
     }
     
+    // Skip empty input
+    if (input.empty()) {
+      continue;
+    }
+
+    // Split input into tokens
+    auto tokens = split_input(input);
+    if (tokens.empty()) continue;
+
+    std::string cmd = tokens[0];
+    
     // Check for exit command
-    if (input == "exit 0") {
+    if (cmd == "exit" && tokens.size() == 2 && tokens[1] == "0") {
       return 0;  // Exit with status code 0
     }
     
     // Check for echo command
-    if (input.substr(0, 5) == "echo ") {
+    if (cmd == "echo") {
       // Print everything after "echo "
       std::cout << input.substr(5) << std::endl;
       continue;
     }
     
     // Check for type command
-    if (input.substr(0, 5) == "type ") {
-      std::string cmd = input.substr(5);  // Get the command to check
+    if (cmd == "type" && tokens.size() == 2) {
+      std::string target = tokens[1];
       
       // First check if it's a builtin
-      if (is_builtin(cmd)) {
-        std::cout << cmd << " is a shell builtin" << std::endl;
+      if (is_builtin(target)) {
+        std::cout << target << " is a shell builtin" << std::endl;
       } else {
         // If not a builtin, search in PATH
-        std::string cmd_path = find_in_path(cmd);
+        std::string cmd_path = find_in_path(target);
         if (!cmd_path.empty()) {
-          std::cout << cmd << " is " << cmd_path << std::endl;
+          std::cout << target << " is " << cmd_path << std::endl;
         } else {
-          std::cout << cmd << ": not found" << std::endl;
+          std::cout << target << ": not found" << std::endl;
         }
       }
       continue;
     }
     
-    // For now, all other commands are invalid
-    std::cout << input << ": command not found" << std::endl;
+    // Try to execute as external program
+    std::string program_path = find_in_path(cmd);
+    if (!program_path.empty()) {
+      execute_program(program_path, tokens);
+    } else {
+      std::cout << cmd << ": command not found" << std::endl;
+    }
   }
 
   return 0;
