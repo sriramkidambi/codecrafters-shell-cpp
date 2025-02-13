@@ -259,14 +259,18 @@ int main() {
     
     // Check for echo command
     if (command == "echo") {
-      std::string output;
-      for (size_t i = 1; i < cmd.args.size(); ++i) {
-        if (i > 1) output += " ";
-        output += cmd.args[i];
-      }
-      output += "\n";
-      write_output(output, cmd);
-      continue;
+        std::string output;
+        for (size_t i = 1; i < cmd.args.size(); ++i) {
+            if (i > 1) output += " ";
+            output += cmd.args[i];
+        }
+        output += "\n";
+
+        // For echo, we only write to stdout if there's no stderr redirection
+        if (!cmd.has_stderr_redirection) {
+            write_output(output, cmd);
+        }
+        continue;
     }
 
     // Check for pwd command
