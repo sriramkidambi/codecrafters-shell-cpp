@@ -266,7 +266,7 @@ void handleTabPress(std::string& input, size_t& cursor_pos) {
         if(command == "ech") {
             // Calculate the difference in length
             size_t old_len = command.length();
-            std::string completion = "echo";
+            std::string completion = "echo ";  // Note the added space
             size_t new_len = completion.length();
             
             // Replace the command part while preserving any arguments
@@ -279,7 +279,7 @@ void handleTabPress(std::string& input, size_t& cursor_pos) {
         }
         else if(command == "typ") {
             size_t old_len = command.length();
-            std::string completion = "type";
+            std::string completion = "type ";  // Note the added space
             size_t new_len = completion.length();
             
             input = completion + after_cursor;
