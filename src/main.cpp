@@ -1,6 +1,11 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <cstdlib>
+#include <filesystem>
+#include <sstream>
+
+namespace fs = std::filesystem;
 
 // Helper function to check if a command is a builtin
 bool is_builtin(const std::string& cmd) {
@@ -11,6 +16,36 @@ bool is_builtin(const std::string& cmd) {
     }
   }
   return false;
+}
+
+// Helper function to split PATH into directories
+std::vector<std::string> get_path_dirs() {
+  std::vector<std::string> dirs;
+  const char* path = std::getenv("PATH");
+  if (!path) return dirs;
+  
+  std::string path_str(path);
+  std::stringstream ss(path_str);
+  std::string dir;
+  
+  while (std::getline(ss, dir, ':')) {
+    if (!dir.empty()) {
+      dirs.push_back(dir);
+    }
+  }
+  return dirs;
+}
+
+// Helper function to find executable in PATH
+std::string find_in_path(const std::string& cmd) {
+  auto dirs = get_path_dirs();
+  for (const auto& dir : dirs) {
+    fs::path cmd_path = fs::path(dir) / cmd;
+    if (fs::exists(cmd_path) && fs::is_regular_file(cmd_path)) {
+      return cmd_path.string();
+    }
+  }
+  return "";
 }
 
 int main() {
@@ -45,10 +80,18 @@ int main() {
     // Check for type command
     if (input.substr(0, 5) == "type ") {
       std::string cmd = input.substr(5);  // Get the command to check
+      
+      // First check if it's a builtin
       if (is_builtin(cmd)) {
         std::cout << cmd << " is a shell builtin" << std::endl;
       } else {
-        std::cout << cmd << ": not found" << std::endl;
+        // If not a builtin, search in PATH
+        std::string cmd_path = find_in_path(cmd);
+        if (!cmd_path.empty()) {
+          std::cout << cmd << " is " << cmd_path << std::endl;
+        } else {
+          std::cout << cmd << ": not found" << std::endl;
+        }
       }
       continue;
     }
