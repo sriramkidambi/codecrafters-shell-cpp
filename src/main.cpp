@@ -1,4 +1,5 @@
 #include <iostream>
+#include <string>
 
 int main() {
   // Flush after every std::cout / std:cerr
@@ -17,7 +18,12 @@ int main() {
       break;
     }
     
-    // For now, all commands are invalid
+    // Check for exit command
+    if (input == "exit 0") {
+      return 0;  // Exit with status code 0
+    }
+    
+    // For now, all other commands are invalid
     std::cout << input << ": command not found" << std::endl;
   }
 
