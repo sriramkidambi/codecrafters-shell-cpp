@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cerrno>
 #include <fcntl.h>
+#include <termios.h>
 
 namespace fs = std::filesystem;
 
@@ -218,22 +219,15 @@ void execute_program(const std::string& program_path, const Command& cmd) {
     }
 }
 
-// Helper function to write output with redirection
-void write_output(const std::string& output, const Command& cmd, bool is_error = false) {
-    if ((is_error && cmd.has_stderr_redirection) || (!is_error && cmd.has_stdout_redirection)) {
-        const std::string& file = is_error ? cmd.stderr_file : cmd.stdout_file;
-        int fd = open(file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (fd != -1) {
-            write(fd, output.c_str(), output.length());
-            close(fd);
-        }
-    } else {
-        if (is_error) {
-            std::cerr << output;
-        } else {
-            std::cout << output;
+// Function to handle autocompletion
+std::string autocomplete(const std::string& input) {
+    const std::vector<std::string> builtins = {"echo", "exit"};
+    for (const auto& builtin : builtins) {
+        if (builtin.find(input) == 0) {  // Check if input is a prefix
+            return builtin + " ";  // Return the completed command with a space
         }
     }
+    return input;  // Return the input unchanged if no match
 }
 
 int main() {
@@ -251,9 +245,23 @@ int main() {
 
         std::cout << "$ ";  // Print prompt
         
-        // Read input
-        if (!std::getline(std::cin, input)) {
-            // Exit if we hit EOF (Ctrl+D) or encounter an error
+        // Read input character by character to detect TAB
+        char ch;
+        input.clear();
+        while (std::cin.get(ch)) {
+            if (ch == '\t') {  // TAB key
+                input = autocomplete(input);
+                std::cout << "\r$ " << input;  // Update prompt with completed command
+                std::cout.flush();
+            } else if (ch == '\n') {  // Enter key
+                break;
+            } else {
+                input += ch;
+            }
+        }
+
+        // Exit if we hit EOF (Ctrl+D) or encounter an error
+        if (std::cin.eof()) {
             close(original_stdout);
             close(original_stderr);
             break;
