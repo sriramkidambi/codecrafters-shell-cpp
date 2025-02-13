@@ -254,9 +254,11 @@ std::vector<std::string> get_possible_completions(const std::string& input) {
         }
     }
 
-    // Add external executables to completions
+    // Add external executables to completions, avoiding duplicates
     for (const auto& exe : exe_matches) {
-        completions.push_back(exe);
+        if (std::find(completions.begin(), completions.end(), exe) == completions.end()) {
+            completions.push_back(exe);
+        }
     }
 
     return completions;
