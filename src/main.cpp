@@ -250,13 +250,18 @@ int main() {
         input.clear();
         while (std::cin.get(ch)) {
             if (ch == '\t') {  // TAB key
-                input = autocomplete(input);
-                std::cout << "\r$ " << input;  // Update prompt with completed command
-                std::cout.flush();
+                std::string completed = autocomplete(input);
+                if (completed != input) {
+                    input = completed;
+                    std::cout << "\r$ " << input;  // Update prompt with completed command
+                    std::cout.flush();
+                }
             } else if (ch == '\n') {  // Enter key
                 break;
             } else {
                 input += ch;
+                std::cout << ch;  // Echo the character
+                std::cout.flush();
             }
         }
 
