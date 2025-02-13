@@ -10,6 +10,9 @@
 #include <cerrno>
 #include <fcntl.h>
 #include <termios.h>
+#include <optional>
+#include <numeric>
+#include <fstream>
 
 namespace fs = std::filesystem;
 
@@ -230,40 +233,69 @@ std::string autocomplete(const std::string& input) {
     return input;  // Return the input unchanged if no match
 }
 
+void enableRawMode() {
+    termios term;
+    tcgetattr(STDIN_FILENO, &term);
+    term.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &term);
+}
+
+void disableRawMode() {
+    termios term;
+    tcgetattr(STDIN_FILENO, &term);
+    term.c_lflag |= (ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &term);
+}
+
+void handleTabPress(std::string& input) {
+    if(input == "ech") {
+        input = "echo ";
+        std::cout << "o ";
+    }
+    else if(input == "exi") {
+        input = "exit ";
+        std::cout << "t ";
+    }
+}
+
+void readInputWithTabSupport(std::string& input) {
+    enableRawMode();
+    char c;
+    
+    while (true) {
+        c = getchar();
+        if (c == '\n') {
+            std::cout << std::endl;
+            break;
+        } else if (c == '\t') {
+            handleTabPress(input);
+        } else if (c == 127) { // Backspace
+            if (!input.empty()) {
+                input.pop_back();
+                std::cout << "\b \b"; // Move cursor back, overwrite with space, move back again
+            }
+        } else {
+            input += c;
+            std::cout << c;
+        }
+    }
+    
+    disableRawMode();
+}
+
 int main() {
     // Flush after every std::cout / std:cerr
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
 
-    std::string input;
-    
-    // Main REPL loop
     while (true) {
         // Save original file descriptors
         int original_stdout = dup(STDOUT_FILENO);
         int original_stderr = dup(STDERR_FILENO);
 
-        std::cout << "$ ";  // Print prompt
-        
-        // Read input character by character to detect TAB
-        char ch;
-        input.clear();
-        while (std::cin.get(ch)) {
-            if (ch == '\t') {  // TAB key
-                std::string completed = autocomplete(input);
-                if (completed != input) {
-                    input = completed;
-                    std::cout << "\r$ " << input;  // Update prompt with completed command
-                    std::cout.flush();
-                }
-            } else if (ch == '\n') {  // Enter key
-                break;
-            } else {
-                input += ch;
-                std::cout << ch;  // Echo the character
-                std::cout.flush();
-            }
-        }
+        std::cout << "$ ";
+        std::string input;
+        readInputWithTabSupport(input);
 
         // Exit if we hit EOF (Ctrl+D) or encounter an error
         if (std::cin.eof()) {
