@@ -223,42 +223,43 @@ void execute_program(const std::string& program_path, const Command& cmd) {
     }
 }
 
-// Update autocomplete function to check both builtins and external executables
-std::string autocomplete(const std::string& input) {
-    // Check built-in commands first
+// Replace autocomplete function with this
+std::vector<std::string> get_possible_completions(const std::string& input) {
+    std::vector<std::string> completions;
+
+    // Check built-in commands
     const std::vector<std::string> builtins = {"echo", "exit", "type", "pwd", "cd"};
     for (const auto& builtin : builtins) {
         if (builtin.find(input) == 0) {
-            return builtin + " ";
+            completions.push_back(builtin);
         }
     }
 
-    // Check for external executables in PATH
-    std::set<std::string> matches;
+    // Check external executables in PATH
+    std::set<std::string> exe_matches;
     auto dirs = get_path_dirs();
     for (const auto& dir : dirs) {
         if (!fs::is_directory(dir)) continue;
-        
         try {
             for (const auto& entry : fs::directory_iterator(dir)) {
-                if (entry.is_regular_file() && 
-                    ::access(entry.path().c_str(), X_OK) == 0) {
+                if (entry.is_regular_file() && (::access(entry.path().c_str(), X_OK) == 0)) {
                     std::string filename = entry.path().filename().string();
                     if (filename.find(input) == 0) {
-                        matches.insert(filename);
+                        exe_matches.insert(filename);
                     }
                 }
             }
-        } catch (const std::exception&) {
-            // Ignore directories we can't access
+        } catch (...) {
+            // Ignore inaccessible directories
         }
     }
 
-    if (matches.size() == 1) {
-        return *matches.begin() + " ";
+    // Add external executables to completions
+    for (const auto& exe : exe_matches) {
+        completions.push_back(exe);
     }
 
-    return input;
+    return completions;
 }
 
 void enableRawMode() {
@@ -275,12 +276,16 @@ void disableRawMode() {
     tcsetattr(STDIN_FILENO, TCSANOW, &term);
 }
 
-// Update the input handling in readInputWithTabSupport
+// Update the input handling to support multi-completion
 void readInputWithTabSupport(std::string& input) {
     enableRawMode();
     char c;
     input.clear();
     
+    // Track tab completion state
+    bool pending_completion = false;
+    std::vector<std::string> current_completions;
+
     while (true) {
         c = getchar();
         if (c == '\n') {
@@ -289,13 +294,35 @@ void readInputWithTabSupport(std::string& input) {
         } else if (c == '\t') {
             if (input.find(' ') == std::string::npos) { // Only autocomplete command if no spaces
                 std::string original = input;
-                input = autocomplete(original);
-                if (input != original) {
-                    // Update the displayed line
+                auto completions = get_possible_completions(original);
+                
+                if (completions.size() == 1) {
+                    input = completions[0] + " ";
                     std::cout << "\r$ " << input << std::flush;
+                    pending_completion = false;
+                    current_completions.clear();
+                } else if (completions.size() > 1) {
+                    if (pending_completion) {
+                        // Display all matches on second tab
+                        std::cout << "\n";
+                        for (size_t i = 0; i < completions.size(); ++i) {
+                            if (i > 0) std::cout << "  ";
+                            std::cout << completions[i];
+                        }
+                        std::cout << "\n$ " << input << std::flush;
+                        pending_completion = false;
+                        current_completions.clear();
+                    } else {
+                        // Store matches and ring bell on first tab
+                        current_completions = completions;
+                        pending_completion = true;
+                        std::cout << '\a' << std::flush;
+                    }
                 } else {
-                    // Ring bell for invalid completion
+                    // No matches found
                     std::cout << '\a' << std::flush;
+                    pending_completion = false;
+                    current_completions.clear();
                 }
             }
         } else if (c == 127) { // Backspace
@@ -303,9 +330,13 @@ void readInputWithTabSupport(std::string& input) {
                 input.pop_back();
                 std::cout << "\b \b";
             }
+            pending_completion = false;
+            current_completions.clear();
         } else if (c >= 32 && c < 127) { // Printable characters
             input += c;
             std::cout << c;
+            pending_completion = false;
+            current_completions.clear();
         }
     }
     
